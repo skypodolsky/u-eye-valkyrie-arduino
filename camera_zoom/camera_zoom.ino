@@ -3,11 +3,11 @@
 #define ADDRESS 1 // CAMERA ADDRESS
 
 // you can touch this
-#define CAMERA_ZOOM_MIN 1  // min zoom value
-#define CAMERA_ZOOM_MAX 10 // max zoom value
+#define CAMERA_ZOOM_MIN 0  // min zoom value
+#define CAMERA_ZOOM_MAX 7 // max zoom value
 #define CAMERA_ZOOM_POSITIONS CAMERA_ZOOM_MAX // only integer zoom values (10 positions for x10 camera)
-#define CAMERA_PWM_US_MIN 1050 // absolute max, ignore outside this window
-#define CAMERA_PWM_US_MAX 2050 // absolute min, ignore outside this window
+#define CAMERA_PWM_US_MIN 1050 // absolute min, ignore outside this window
+#define CAMERA_PWM_US_MAX 2050 // absolute max, ignore outside this window
 #define CAMERA_PWM_US_EFF_MIN 1050 // can leave the same
 #define CAMERA_PWM_US_EFF_MAX 2000 // needs to be lesser to allow x10 zoom
 
@@ -27,26 +27,45 @@ void sendPelcoDZoomFrame(byte command, byte data1, byte data2)
     Serial.write(bytes[i]);
 }
 
-void sendViscaZoomFrame(byte zoom)
+void sendViscaZoomFrame(int zoom)
 {
-  int zoom_values[] = { 0x3BF, 0x87F, 0xD3F, 0x11FF, 0x167F, 0x1B3F, 0x1FFF, 0x24BF, 0x297F, 0x2e3f };
+  /** 100% max */
+  if (zoom > CAMERA_ZOOM_MAX)
+    zoom = CAMERA_ZOOM_MAX;
+
+  if (zoom < CAMERA_ZOOM_MIN)
+    zoom = CAMERA_ZOOM_MIN;
+
+  const int zoom_min = 0x3BF;
+  const int zoom_max = 0x2E3F;
+  const int zoom_range = zoom_max - zoom_min;
+  int zoom_value = zoom_min + ((double) zoom * (double) zoom_range) / (double) CAMERA_ZOOM_MAX;
+
+  //Serial.print(zoom_value, HEX);
+  //Serial.print('\n');
+  
   byte cmd[] = { 0x81, 0x01, 0x04, 0x47, 0x00, 0x00, 0x00, 0x00, 0xFF };
 
-  if (zoom < 1 || zoom > 10)
-    return;
-
   for (int i = 7; i > 3; i--) {
-    cmd[i] = zoom_values[zoom - 1] & 0x0F;
-    zoom_values[zoom - 1] = zoom_values[zoom - 1] >> 4;
+    cmd[i] = zoom_value & 0x0F;
+    zoom_value = zoom_value >> 4;
   }
 
 #if 0
   for (int i = 0; i < ARRAY_LENGTH(cmd); i++) {
-    Serial.print(cmd[i], HEX);
-    Serial.print(' ');
+    //Serial.print(cmd[i], HEX);
+    //Serial.print(' ');
   }
 #endif
 
+  for (int i = 0; i < ARRAY_LENGTH(cmd); i++)
+    Serial.write(cmd[i]);
+}
+
+void sendViscaFocusFar()
+{
+  byte cmd[] = { 0x81, 0x01, 0x04, 0x08, 0x03, 0xFF };
+ 
   for (int i = 0; i < ARRAY_LENGTH(cmd); i++)
     Serial.write(cmd[i]);
 }
@@ -83,8 +102,6 @@ void setup() {
   delay(500);
   sendViscaClearFrame();
   delay(500);
-  sendViscaZoomDisplayOnFrame();
-  delay(500);
 }
 
 void loop() {
@@ -99,7 +116,8 @@ void loop() {
     return;
   }
 
-  int zoom = (pwm_duration - CAMERA_PWM_US_MIN) / CAMERA_USECS_PER_ZOOM_POSITION;
+  int diff = pwm_duration - CAMERA_PWM_US_EFF_MIN;
+  int zoom = ((double) diff * (double) CAMERA_ZOOM_MAX) / CAMERA_PWM_RANGE;
 
 #if 0
   Serial.println("---");
@@ -110,14 +128,6 @@ void loop() {
 #endif
 
   static int prev_zoom = 0;
-
-  // if pwm_duration_avg less or exactly
-  // equals CAMERA_PWM_US_MIN
-  if (zoom <= 0)
-    zoom = CAMERA_ZOOM_MIN;
-
-  if (zoom > 10)
-    zoom = CAMERA_ZOOM_MAX;
 
   if (!prev_zoom)
     prev_zoom = zoom;
