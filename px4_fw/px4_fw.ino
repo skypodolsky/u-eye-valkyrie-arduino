@@ -10,15 +10,17 @@
 #define BUTTON_ZOOM_OUT_1             0x04
 #define BUTTON_ZOOM_IN_2              0x80
 #define BUTTON_ZOOM_OUT_2             0x40
-#define BUTTON_LOCK_FIRST             0x20
-#define BUTTON_LOCK_SECOND            0x10
-#define BUTTON_ENGAGE_FIRST           0x22
-#define BUTTON_ENGAGE_SECOND          0x12
+#define BUTTON_LOCK_FIRST             0x10
+#define BUTTON_LOCK_SECOND            0x20
+#define BUTTON_ENGAGE_FIRST           0x12
+#define BUTTON_ENGAGE_SECOND          0x22
 
-#define SERVO_LOCK_VAL                150
-#define SERVO_UNLOCK_VAL              40
+#define SERVO_LOCK_VAL                90
+#define SERVO_UNLOCK_VAL              0
 #define SERVO_FIRST_PIN               5
 #define SERVO_SECOND_PIN              6
+#define SENSOR_FIRST_PIN              7
+#define SENSOR_SECOND_PIN             8
 
 #define ZOOM_MIN                      1
 #define ZOOM_MAX                      10
@@ -28,6 +30,13 @@
 #define CAMERA_ZOOM_MAX_VALUE         0x2E3F
 #define CAMERA_SERIAL_RX_PIN          2
 #define CAMERA_SERIAL_TX_PIN          3
+
+typedef enum buzzer_status_t {
+  BUZZER_OK,
+  BUZZER_LOCK_FAILED,
+  BUZZER_FIRST_LOCKED,
+  BUZZER_SECOND_LOCKED
+} buzzer_status_t;
 
 #define ARRAY_LENGTH(x) (sizeof(x) / sizeof((x)[0]))
 
@@ -42,6 +51,12 @@ bool servo_second_locked;
 SoftwareSerial camera_serial(CAMERA_SERIAL_RX_PIN, CAMERA_SERIAL_TX_PIN);
 
 void setup() {
+  //delay to hear buzzers on the backgroung of everything else
+  delay(1000);
+  pinMode(2, OUTPUT);
+  digitalWrite(2, LOW);
+  buzzerNotification(BUZZER_OK);
+  
   servo_first.attach(SERVO_FIRST_PIN);
   servo_second.attach(SERVO_SECOND_PIN);
 
@@ -58,6 +73,41 @@ void setup() {
   sendViscaZoomFrame(ZOOM_MIN);
 }
 
+static void buzzerNotification(buzzer_status_t code)
+{
+  switch (code) {
+    case BUZZER_OK:
+      digitalWrite(2, HIGH);
+      delay(1000);
+      digitalWrite(2, LOW);
+    break;
+    case BUZZER_FIRST_LOCKED:
+      for (int i = 0; i < 1; i++) {
+        digitalWrite(2, HIGH);
+        delay(50);
+        digitalWrite(2, LOW);
+        delay(50);
+      }
+    break;
+    case BUZZER_SECOND_LOCKED:
+      for (int i = 0; i < 2; i++) {
+        digitalWrite(2, HIGH);
+        delay(50);
+        digitalWrite(2, LOW);
+        delay(50);
+      }
+    break;
+    case BUZZER_LOCK_FAILED:
+      for (int i = 0; i < 5; i++) {
+        digitalWrite(2, HIGH);
+        delay(50);
+        digitalWrite(2, LOW);
+        delay(50);
+      }
+    break;
+  }
+}
+
 static void sendViscaZoomFrame(int zoom)
 {
   byte cmd[] = { 0x81, 0x01, 0x04, 0x47, 0x00, 0x00, 0x00, 0x00, 0xFF };
@@ -70,6 +120,12 @@ static void sendViscaZoomFrame(int zoom)
 
   for (int i = 0; i < ARRAY_LENGTH(cmd); i++)
     camera_serial.write(cmd[i]);
+}
+
+void serialFlush(){
+  while(Serial.available() > 0) {
+    char t = Serial.read();
+  }
 }
 
 static void handle_btn_press(uint16_t bitmap)
@@ -102,42 +158,48 @@ static void handle_btn_press(uint16_t bitmap)
       }
       break;
     case BUTTON_LOCK_FIRST:
-      Serial.println(analogRead(A2), DEC);
       if (!servo_first_locked) {
-
         int i = 0;
-        while (digitalRead(7) != HIGH) {
+        while (digitalRead(SENSOR_FIRST_PIN) != HIGH) {
           servo_first.write(SERVO_UNLOCK_VAL + i);
           delay(70);
-          i += 1;
+          i += 2;
 
-          if (i > (SERVO_LOCK_VAL - SERVO_UNLOCK_VAL))
-            break;
+          if (i > (SERVO_LOCK_VAL - SERVO_UNLOCK_VAL)) {
+            Serial.println("Failed to lock servo 1");
+            servo_first.write(SERVO_UNLOCK_VAL);
+            buzzerNotification(BUZZER_LOCK_FAILED);
+            goto out;
+          }
         }
 
         servo_first.write(SERVO_UNLOCK_VAL + i - 5);
 
         Serial.println("Servo 1 locked");
+        buzzerNotification(BUZZER_FIRST_LOCKED);
         servo_first_locked = true;
       }
       break;
     case BUTTON_LOCK_SECOND:
-      Serial.println(analogRead(A1), DEC);
       if (!servo_second_locked) {
-
         int i = 0;
-        while (digitalRead(8) != HIGH) {
+        while (digitalRead(SENSOR_SECOND_PIN) != HIGH) {
           servo_second.write(SERVO_UNLOCK_VAL + i);
           delay(70);
-          i += 1;
+          i += 2;
 
-          if (i > (SERVO_LOCK_VAL - SERVO_UNLOCK_VAL))
-            break;
+          if (i > (SERVO_LOCK_VAL - SERVO_UNLOCK_VAL)) {
+            Serial.println("Failed to lock servo 2");
+            servo_second.write(SERVO_UNLOCK_VAL);
+            buzzerNotification(BUZZER_LOCK_FAILED);
+            goto out;
+          }
         }
         
         servo_second.write(SERVO_UNLOCK_VAL + i - 5);
         
         Serial.println("Servo 2 locked");
+        buzzerNotification(BUZZER_SECOND_LOCKED);
         servo_second_locked = true;
       }
       break;
@@ -154,6 +216,11 @@ static void handle_btn_press(uint16_t bitmap)
       servo_second_locked = false;
       break;
   }
+
+  return;
+  
+out:
+  serialFlush();
 }
 
 static void comm_receive() {
