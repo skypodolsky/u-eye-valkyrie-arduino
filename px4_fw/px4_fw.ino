@@ -15,8 +15,8 @@
 #define BUTTON_ENGAGE_FIRST           0x22
 #define BUTTON_ENGAGE_SECOND          0x12
 
-#define SERVO_LOCK_VAL                180
-#define SERVO_UNLOCK_VAL              0
+#define SERVO_LOCK_VAL                150
+#define SERVO_UNLOCK_VAL              40
 #define SERVO_FIRST_PIN               5
 #define SERVO_SECOND_PIN              6
 
@@ -50,6 +50,9 @@ void setup() {
 
   Serial.begin(57600);
   Serial.setTimeout(200);
+
+  pinMode(A1, INPUT);
+  pinMode(A2, INPUT);
 
   camera_serial.begin(9600);
   sendViscaZoomFrame(ZOOM_MIN);
@@ -99,26 +102,54 @@ static void handle_btn_press(uint16_t bitmap)
       }
       break;
     case BUTTON_LOCK_FIRST:
+      Serial.println(analogRead(A2), DEC);
       if (!servo_first_locked) {
-        servo_first.write(SERVO_LOCK_VAL);
+
+        int i = 0;
+        while (digitalRead(7) != HIGH) {
+          servo_first.write(SERVO_UNLOCK_VAL + i);
+          delay(70);
+          i += 1;
+
+          if (i > (SERVO_LOCK_VAL - SERVO_UNLOCK_VAL))
+            break;
+        }
+
+        servo_first.write(SERVO_UNLOCK_VAL + i - 5);
+
         Serial.println("Servo 1 locked");
         servo_first_locked = true;
       }
       break;
     case BUTTON_LOCK_SECOND:
+      Serial.println(analogRead(A1), DEC);
       if (!servo_second_locked) {
-        servo_second.write(SERVO_LOCK_VAL);
+
+        int i = 0;
+        while (digitalRead(8) != HIGH) {
+          servo_second.write(SERVO_UNLOCK_VAL + i);
+          delay(70);
+          i += 1;
+
+          if (i > (SERVO_LOCK_VAL - SERVO_UNLOCK_VAL))
+            break;
+        }
+        
+        servo_second.write(SERVO_UNLOCK_VAL + i - 5);
+        
         Serial.println("Servo 2 locked");
         servo_second_locked = true;
       }
       break;
     case BUTTON_ENGAGE_FIRST:
       servo_first.write(SERVO_UNLOCK_VAL);
+      delay(1000);
       Serial.println("Servo 1 unlocked");
       servo_first_locked = false;
       break;
     case BUTTON_ENGAGE_SECOND:
       servo_second.write(SERVO_UNLOCK_VAL);
+      delay(1000);
       Serial.println("Servo 2 unlocked");
       servo_second_locked = false;
       break;
@@ -161,6 +192,7 @@ static void comm_receive() {
         msg_id = buf[3];
       }
 
+      Serial.println(msg_id, HEX);
       if (msg_id == MAVLINK_MSG_MANUAL_CONTROL) {
         uint16_t btn_bits = data[9] | data[8];
         handle_btn_press(btn_bits);
