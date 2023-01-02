@@ -21,6 +21,7 @@
 #define SERVO_SECOND_PIN              6
 #define SENSOR_FIRST_PIN              7
 #define SENSOR_SECOND_PIN             8
+#define BUZZER_PIN                    2
 
 #define ZOOM_MIN                      1
 #define ZOOM_MAX                      10
@@ -53,8 +54,8 @@ SoftwareSerial camera_serial(CAMERA_SERIAL_RX_PIN, CAMERA_SERIAL_TX_PIN);
 void setup() {
   //delay to hear buzzers on the backgroung of everything else
   delay(1000);
-  pinMode(2, OUTPUT);
-  digitalWrite(2, LOW);
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
   buzzerNotification(BUZZER_OK);
   
   servo_first.attach(SERVO_FIRST_PIN);
@@ -66,9 +67,6 @@ void setup() {
   Serial.begin(57600);
   Serial.setTimeout(200);
 
-  pinMode(A1, INPUT);
-  pinMode(A2, INPUT);
-
   camera_serial.begin(9600);
   sendViscaZoomFrame(ZOOM_MIN);
 }
@@ -77,31 +75,31 @@ static void buzzerNotification(buzzer_status_t code)
 {
   switch (code) {
     case BUZZER_OK:
-      digitalWrite(2, HIGH);
+      digitalWrite(BUZZER_PIN, HIGH);
       delay(1000);
-      digitalWrite(2, LOW);
+      digitalWrite(BUZZER_PIN, LOW);
     break;
     case BUZZER_FIRST_LOCKED:
       for (int i = 0; i < 1; i++) {
-        digitalWrite(2, HIGH);
+        digitalWrite(BUZZER_PIN, HIGH);
         delay(50);
-        digitalWrite(2, LOW);
+        digitalWrite(BUZZER_PIN, LOW);
         delay(50);
       }
     break;
     case BUZZER_SECOND_LOCKED:
       for (int i = 0; i < 2; i++) {
-        digitalWrite(2, HIGH);
+        digitalWrite(BUZZER_PIN, HIGH);
         delay(50);
-        digitalWrite(2, LOW);
+        digitalWrite(BUZZER_PIN, LOW);
         delay(50);
       }
     break;
     case BUZZER_LOCK_FAILED:
       for (int i = 0; i < 5; i++) {
-        digitalWrite(2, HIGH);
+        digitalWrite(BUZZER_PIN, HIGH);
         delay(50);
-        digitalWrite(2, LOW);
+        digitalWrite(BUZZER_PIN, LOW);
         delay(50);
       }
     break;
@@ -173,7 +171,7 @@ static void handle_btn_press(uint16_t bitmap)
           }
         }
 
-        servo_first.write(SERVO_UNLOCK_VAL + i - 5);
+        servo_first.write(SERVO_UNLOCK_VAL + i + 3);
 
         Serial.println("Servo 1 locked");
         buzzerNotification(BUZZER_FIRST_LOCKED);
@@ -196,7 +194,7 @@ static void handle_btn_press(uint16_t bitmap)
           }
         }
         
-        servo_second.write(SERVO_UNLOCK_VAL + i - 5);
+        servo_second.write(SERVO_UNLOCK_VAL + i + 3);
         
         Serial.println("Servo 2 locked");
         buzzerNotification(BUZZER_SECOND_LOCKED);
